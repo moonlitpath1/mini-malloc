@@ -1,3 +1,4 @@
+		(this lesson plan was designed for me by https://perplexity.ai according to the way I learn)
 ## Phase 0: Recon Before You Write Anything
 
 > _"Before you build the map, walk the territory."_
