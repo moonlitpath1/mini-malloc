@@ -60,19 +60,23 @@ Build both halves, then inject into `ls` again. If it still works, your `free()`
 ---
 
 ## My Code
+I implemented the free() code, adding feature to reuse memory that has been freed (`is_free = 1` ).
+
+
+
+
 ```
-anu@laptop:~/anu/programming/systems_progg/mini-malloc$ cat malloc_v3.c
 // in v2, we assigned metadata headers
 //we will give free() some work to do here
 
 #include<unistd.h>
 #include<stddef.h>
 
-/*
-* struct block_meta - Metadata header for each allocated block 
-* @size   : Size of user data reigion (in bytes)
-* @is_free: Indicates whether the block is free(1) or not(0) 
-* @next   : Pointer to the next metadata block in the list
+/**
+* struct block_meta - metadata header for each allocated block 
+* @size: size of user data reigion in bytes
+* @is_free: nonzero if free, 0 if allocated 
+* @next: pointer to the next metadata block in the list
  */
 struct block_meta
 {
@@ -84,22 +88,42 @@ struct block_meta
 struct block_meta *head = NULL;
 struct block_meta *tail = NULL;
 
+/**
+ * find_free_block - finds a free block large enough for allocation 
+ * @size: size of user data
+ * 
+ * Performs a first-fit search over the block list starting at @head and 
+ * returns the first free block whose size is greater than or equal to @size
+ *
+ * Return:
+ * Pointer to a suitable free block on success, or NULL if no such block exists
+*/
 struct block_meta* find_free_block(size_t size)
 {
         //search if free block of enough size is available to reuse -- first fit
-        if( head == NULL) return NULL;
-       
-                struct block_meta *curr = head;
-                while(curr != NULL)
+        struct block_meta *curr = head;
+	while(curr != NULL)
+        {
+ 		if(curr->is_free==1 && curr->size >= size)
                 {
-                        if(curr->is_free==1 && curr->size >= size)
-                        {
-                                return curr;
-                        }
-                        curr = curr->next;
+                       return curr;
                 }
+                curr = curr->next;
+        }
 	return NULL;
 }
+
+/**
+ * malloc - allocates heap memory 
+ * @size: memory in bytes to be allocated
+ *
+ * Allocates memory block of at least @size bytes. If free block is available,
+ * then the allocator reuses that, else the heap is extended using sbrk() and a new 
+ * block is created.
+ *
+ * Returns: 
+ * Pointer to the start of the memory block 
+*/
 
 void* malloc(size_t size)
 {
@@ -154,12 +178,76 @@ void free(void *ptr)
 ```
 
 
+----
+
 **Output:**
+And the code works! 
 
 ```
 anu@laptop:~/anu/programming/systems_progg/mini-malloc$ gcc -shared -fPIC -o malloc_v3.so malloc_v3.c && LD_PRELOAD=./malloc_v3.so ls
 '\'                  heap_spy.c            malloc_v1.so   malloc_v3.c    og_malloc.c
  faulty_heap_spy.c   heap_spy_modified.c   malloc_v2.c    malloc_v3.so   out
  git_push.sh         malloc_v1.c           malloc_v2.so   notes
+```
+
+
+----
+
+
+## Issue: Fragmentation. 
+Memory blocks in free space that are too small can't be reused.
+
+To experience this, I wrote a simple code:
+```
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    void *ptrs[10];
+
+    // allocating 10 blocks of 32 bytes
+    for(int i = 0; i < 10; i++)
+        ptrs[i] = malloc(32);
+
+    // free only the even-indexed ones
+    for(int i = 0; i < 10; i += 2)
+        free(ptrs[i]);
+
+	//allocate 64 bytes... will it create new block or reuse??
+    void *big = malloc(64);
+
+    return 0;
+}
 
 ```
+
+I ran this code using my malloc and traced it with strace
+
+```
+anu@laptop:~/anu/programming/systems_progg/mini-malloc$ gcc test_fragmentation.c -o out LD_PRELOAD=./malloc_v3.so strace -e trace=brk ./out 2>&1 | grep brk
+
+brk(NULL)                               = 0x555555559000    
+brk(NULL)                               = 0x555555559000    
+brk(0x555555559040)                     = 0x555555559040  ← malloc(32)
+brk(0x555555559080)                     = 0x555555559080  ← malloc(32)
+brk(0x5555555590c0)                     = 0x5555555590c0  ← malloc(32)
+brk(0x555555559100)                     = 0x555555559100  ← malloc(32)
+brk(0x555555559140)                     = 0x555555559140  ← malloc(32)
+brk(0x555555559180)                     = 0x555555559180  ← malloc(32)
+brk(0x5555555591c0)                     = 0x5555555591c0  ← malloc(32)
+brk(0x555555559200)                     = 0x555555559200  ← malloc(32)
+brk(0x555555559240)                     = 0x555555559240  ← malloc(32)
+brk(0x555555559280)                     = 0x555555559280  ← malloc(32)
+
+brk(0x5555555592e0)                     = 0x5555555592e0  ← malloc(64)⚠️
+```
+
+As expected, for allocating 64 bytes, malloc() could not reuse the memory of 32 bytes, since they were all fragmented, and had to create a new block instead
+
+```
++----+----+----+----+----+----+----+----+----+----+--------+
+| ✅ | A  | ✅ | A  | ✅ | A  | ✅ | A  | ✅ | A  |  64B   |
+|32B |32B |32B |32B |32B |32B |32B |32B |32B |32B |  NEW   |
++----+----+----+----+----+----+----+----+----+----+--------+
+```
+
