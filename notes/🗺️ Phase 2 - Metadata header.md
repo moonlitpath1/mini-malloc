@@ -1,4 +1,4 @@
-**Clue**
+## **Clues**
 
 The jump from v1 to v2 is **one new concept**: a `struct` hidden just before the pointer you return.
 
@@ -17,7 +17,7 @@ struct block_meta {
 
 ---
 
-**What I learnt:**
+## **What I learnt:**
 
 Every time `malloc(N)` is called, you carve this out of the heap
 ```
@@ -46,7 +46,7 @@ you need 1 global variable here that will act as the head of the LL.
 
 ----
 
-**My first attempt:**
+## **My first attempt:**
 ```
 // in v1 we returned raw memory and 0 metadata 
 // v2 will store a small header before user data -- this will help free()

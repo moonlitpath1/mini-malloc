@@ -1,10 +1,15 @@
-// in v1 we returned raw memory and 0 metadata 
-// v2 will store a small header before user data -- this will help free()
+// in v2, we assigned metadata headers
+//we will give free() some work to do here
 
 #include<unistd.h>
 #include<stddef.h>
 
-//align struct to fit in blocks of 16 bytes
+/*
+* struct block_meta - Metadata header for each allocated block 
+* @size   : Size of user data reigion (in bytes)
+* @is_free: Indicates whether the block is free(1) or not(0) 
+* @next   : Pointer to the next metadata block in the list
+ */
 struct block_meta
 {
 	size_t size;
