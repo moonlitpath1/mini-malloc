@@ -74,7 +74,6 @@ static void split_block(struct block_meta *block, size_t size)
 
 
 
-
 /**
  * malloc - allocates heap memory 
  * @size: memory in bytes to be allocated
@@ -96,9 +95,9 @@ void* malloc(size_t size)
 	
 		free_block->is_free = 0;
 		if(free_block->size == size)	
-			return (void*)(free_block+1); 	
+			return (void*)(free_block+1); 
 	
-		else if(free_block->size >= size + sizeof(struct block_meta) + 1)
+		else if(free_block->size >= size + sizeof(struct block_meta) + 16)
 		{
 			split_block(free_block, size);
 			return (void*)((char*)(free_block+1));

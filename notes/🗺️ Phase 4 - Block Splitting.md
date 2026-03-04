@@ -325,3 +325,35 @@ void free(void *ptr)
 
 ```
 
+
+
+---
+i tested it with this code
+```
+
+```
+ and it works. 
+```
+ anu@laptop:~/anu/programming/systems_progg/mini-malloc$ LD_PRELOAD=./malloc_v4.so strace -e trace=brk ./out 2>&1
+brk(NULL)                               = 0x555555559000
+brk(NULL)                               = 0x555555559000
+brk(0x5555555590e8)                     = 0x5555555590e8
++++ exited with 0 +++
+
+```
+
+
+---
+
+## Issue:  
+Internal fragmentation - tiny leftover blocks that are technically "free" but too small to be useful. 
+
+**Fix:**
+this guard in my original code ensures that the remainder has at least 1 byte. 
+```
+if(free_block->size >= size + sizeof(struct block_meta) + 1)
+```
+change that to 
+```
+if(free_block->size >= size + sizeof(struct block_meta) + 16)
+```
