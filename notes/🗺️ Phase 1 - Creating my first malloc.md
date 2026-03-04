@@ -35,8 +35,14 @@ LD_PRELOAD=./mymalloc.so ls
 **What to watch for:** Run it with `strace -e trace=brk` too. You'll see something very different from glibc's single big-grab behavior — your allocator hits `brk` on every single call. That's the inefficiency you're building toward fixing in Phase 3.
 
 ---
+## Notes
+`sbrk(5)` 
+- moves the heap pointer by 5 bytes
+- allocates 5 bytes of memory
+- returns previous program break 
 
-**Mistake 1**
+---
+## **Mistake 1**
 I created a main function and tried running a test code in it, while creating the malloc and free functions and leaving them empty. 
 
 However, this lead to segfault. 
