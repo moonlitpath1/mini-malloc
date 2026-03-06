@@ -13,8 +13,7 @@ AFTER split:
 
 **Clue 2:** After splitting, the first block's `next` should point to the new second block, and the second block's `next` should point to what the first block's `next` was originally.
 
-**Clue 3:** Only split if there's enough room — you need at least `size + sizeof(struct block_meta) + 1` bytes in the free block, otherwise there's no point.[](https://cs107e.github.io/assignments/assign4/block_headers/)​
-
+**Clue 3:** Only split if there's enough room — you need at least `size + sizeof(struct block_meta) + 1` bytes in the free block, otherwise there's no point.
 Go! 🔨
 
 ---
@@ -164,6 +163,33 @@ this fixed the segmentation fault.
 
 ---
 
+## Extra Issue:  
+Internal fragmentation - tiny leftover blocks that are technically "free" but too small to be useful. 
+For example, if you have a code like this:\
+```
+void *a, *b;
+a = malloc(10);
+free(a);
+b = malloc(9)  
+//here a seperate block of 1 byte will be created unecessarily. the chances of 1 byte being used by another block is very low. so there is a high chance it would just go to waste.
+```
+
+**Fix:**
+this guard in my original code ensures that the remainder has at least 1 byte. 
+```
+if(free_block->size >= size + sizeof(struct block_meta) + 1)
+```
+change that to 
+```
+if(free_block->size >= size + sizeof(struct block_meta) + 16)
+```
+
+now splits happen only when remaining block size is 16. 
+Why 16?
+--> the maximum size of a C language variable is 16 bytes. THis is the same reason why we had adjusted the `struct block_meta` to fit to 16 bytes. 
+
+
+---
 ## Full code:
 ```
 //block splitting
@@ -342,18 +368,3 @@ brk(0x5555555590e8)                     = 0x5555555590e8
 
 ```
 
-
----
-
-## Issue:  
-Internal fragmentation - tiny leftover blocks that are technically "free" but too small to be useful. 
-
-**Fix:**
-this guard in my original code ensures that the remainder has at least 1 byte. 
-```
-if(free_block->size >= size + sizeof(struct block_meta) + 1)
-```
-change that to 
-```
-if(free_block->size >= size + sizeof(struct block_meta) + 16)
-```
