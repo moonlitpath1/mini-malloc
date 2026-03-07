@@ -162,34 +162,6 @@ So, it is crucial to check if there's enough room to split before calling split_
 this fixed the segmentation fault. 
 
 ---
-
-## Extra Issue:  
-Internal fragmentation - tiny leftover blocks that are technically "free" but too small to be useful. 
-For example, if you have a code like this:\
-```
-void *a, *b;
-a = malloc(10);
-free(a);
-b = malloc(9)  
-//here a seperate block of 1 byte will be created unecessarily. the chances of 1 byte being used by another block is very low. so there is a high chance it would just go to waste.
-```
-
-**Fix:**
-this guard in my original code ensures that the remainder has at least 1 byte. 
-```
-if(free_block->size >= size + sizeof(struct block_meta) + 1)
-```
-change that to 
-```
-if(free_block->size >= size + sizeof(struct block_meta) + 16)
-```
-
-now splits happen only when remaining block size is 16. 
-Why 16?
---> the maximum size of a C language variable is 16 bytes. THis is the same reason why we had adjusted the `struct block_meta` to fit to 16 bytes. 
-
-
----
 ## Full code:
 ```
 //block splitting

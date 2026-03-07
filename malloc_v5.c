@@ -20,7 +20,6 @@ static struct block_meta *head = NULL;
 static struct block_meta *tail = NULL;
 
 
-
 /**
  * find_free_block - finds a free block large enough for allocation 
  * @size: size of user data
@@ -56,23 +55,66 @@ static struct block_meta* find_free_block(size_t size)
 static void split_block(struct block_meta *block, size_t size)
 {
 	//block splitting
-        // |      free     |   ---->  |   size   |   new   |
+        // |      free     |   ---->  |   required_size   |   remainder   |
 
-        struct block_meta *remainder = (struct block_meta*)((char*)(block + 1) + size);
+        struct block_meta *remainder = (struct block_meta*)((char*)(block + 1) + size + sizeof(size_t));
         // assigning meta data to new block
-        remainder->size = block->size - size - sizeof(struct block_meta);
+        remainder->size = block->size - size - sizeof(struct block_meta) - sizeof(size_t);
         remainder->is_free = 1;
         remainder->next = block->next;
 
+	//editing footer
+	size_t *footer = (size_t*)((char*)(remainder+1) + remainder->size);
+	*footer = remainder->size;
         //editing free block's meta data
         block->size = size;
         block->next = remainder;
+	footer = (size_t*)((char*)(block+1) + block->size);
+	*footer = block->size;
 
 	if(block == tail) 
 		tail = remainder;
 }
 
 
+
+//foward coalescing
+void forward_coalesce(struct block_meta *curr_block)
+{
+        //check if it's the last block in physical memory
+        if((void*)((char*)(curr_block+1)+curr_block->size) >= sbrk(0)) return;
+        
+	struct block_meta *next_block = (struct block_meta*)((char*)(curr_block+1)+curr_block->size + sizeof(size_t));
+        if(!next_block->is_free) return; 
+
+        curr_block->size = curr_block->size + sizeof(size_t) + sizeof(struct block_meta) + next_block->size;
+        curr_block->next = next_block->next;
+
+	size_t *footer = (size_t*)((char*)(curr_block+1) + curr_block->size);
+	*footer = curr_block->size;
+}
+
+
+
+
+//backward coalescing
+void backward_coalesce(struct block_meta *curr_block)
+{
+	if(curr_block == head) return;
+
+	size_t *footer = (size_t*)((char*)curr_block - sizeof(size_t));
+	struct block_meta *prev_block = (struct block_meta*)((char*)footer - *footer - sizeof(struct block_meta));
+	if(!prev_block->is_free) return;
+
+	prev_block->size = prev_block->size + sizeof(size_t) + sizeof(struct block_meta) + curr_block->size;
+	prev_block->next = curr_block->next;
+
+	if(curr_block == tail) tail = prev_block;
+
+	footer = (size_t*)((char*)(prev_block+1) + prev_block->size);
+	*footer = prev_block->size;
+	
+}
 /**
  * malloc - allocates heap memory 
  * @size: memory in bytes to be allocated
@@ -87,53 +129,46 @@ static void split_block(struct block_meta *block, size_t size)
 
 void* malloc(size_t size)
 {
-	//search if free block of enough size is available to reuse -- first fit 
-	struct block_meta *free_block = find_free_block(size);
-	if(free_block)
+	struct block_meta *block;
+	if(block = find_free_block(size))
 	{
-	
-		free_block->is_free = 0;
-		if(free_block->size == size)	
-			return (void*)(free_block+1); 
-	
-		else if(free_block->size >= size + sizeof(struct block_meta) + 16)
-		{
-			split_block(free_block, size);
-			return (void*)((char*)(free_block+1));
-		}	
-	}
-
-
-	//getting top of the heap
-	void *top = sbrk(0);
-	
-	//allocting space for user data and meta data
-	if( sbrk(size + sizeof(struct block_meta) ) == (void *)-1 ) return NULL;
-
-	//meta data struct would start at the heap top
-	struct block_meta *meta_data = (struct block_meta*)top;
-	meta_data->size = size;
-	meta_data->is_free=0;
-	meta_data->next=NULL;
-
-	//adding to metadata linkedlist	
-	if(tail == NULL)
-	{
-		head = meta_data;
-		tail=meta_data;
+		block->is_free = 0;
+		if(block->size > sizeof(struct block_meta) + 1)
+			split_block(block, size);
 	}
 	else
 	{
-		tail->next = meta_data;
-		tail=meta_data;
+		block = sbrk(0);
+		//allocting space for user data, meta data and footer
+        	if( sbrk(size + sizeof(struct block_meta) + sizeof(size_t)) == (void *)-1 ) return NULL;
+
+        	//meta data struct would start at the heap top
+        	block->size = size;
+        	block->is_free=0;
+        	block->next=NULL;
+
+
+        	//adding to metadata linkedlist 
+        	if(tail == NULL)
+        	{
+                	head = block;
+                	tail = block;
+        	}
+       		 else
+    		{
+       			tail->next = block;
+	                tail = block;
+	        }
+		
+       
+		size_t *footer = (size_t*)((char*)(block+1) + size);
+		*footer = size;
+	
 	}
+       
+	return (void*)(block+1);
 
-	//userdata memory starts after metadata
-	top = (char*)top+sizeof(*meta_data);
-	return top;
 }
-
-
 
 
 
@@ -144,7 +179,7 @@ void* malloc(size_t size)
  *returns: void
 */
 void free(void *ptr)
-{
+{  
 	if(ptr == NULL) return;
 
 	//ptr points to the user data
@@ -153,13 +188,9 @@ void free(void *ptr)
 	curr_block->is_free=1;
 	
 	//coalescing
- 	//check if it's the last block in physical memory	
-	if((void*)((char*)(curr_block+1)+curr_block->size) >= sbrk(0)) return;
-	struct block_meta *next_block = (struct block_meta*)((char*)(curr_block+1)+curr_block->size);
-	if(next_block->is_free == 0) return;
-	
-	curr_block->size = curr_block->size + sizeof(struct block_meta) + next_block->size;
-	curr_block->next = next_block->next;
+	backward_coalesce(curr_block);
+	forward_coalesce(curr_block);
+
 }
 
 
